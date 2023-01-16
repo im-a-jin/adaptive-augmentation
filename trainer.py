@@ -1,11 +1,9 @@
 import numpy as np
-import pandas as pd
 import torch
 from torch.optim import SGD
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
-
-import utils
+from utils import reset_parameters, ListLogger
 
 class Trainer():
     """General class for training models.
@@ -24,83 +22,70 @@ class Trainer():
         val_split: Validation split (20% of dataset)
         log: Dictionary of metrics to log while training
     """
-    # TODO: Add model initialization and reset
-    def __init__(self, model, dataset, transform=None, device='cpu'):
-        self.model = model.to(device)
+    def __init__(self, dataset, test_dataset, transform=None, device='cpu'):
         self.dataset = dataset
+        self.test_dataset = test_dataset
         self.transform = transform
         self.device = device
+        self.logger = ListLogger()
+        self.resplit()
 
-        self.reset_splits()
-        self.reset_model()
-        self.reset_log()
+    def reset_logger(self):
+        self.logger = ListLogger()
 
-    def reset_model(self):
-        """Resets model parameters."""
-        self.model.apply(utils.reset_parameters)
-
-    def reset_log(self):
-        """Resets log."""
-        self.log = {
-                'epochs': [], 
-                'train_loss': [], 'train_acc': [], 
-                'val_loss': [], 'val_acc': [],
-                'train_class_loss': {}, 'train_class_acc': {},
-                'val_class_loss': {}, 'val_class_acc': {},
-                }
-        for c in torch.unique(self.dataset.classes):
-            c = c.item()
-            self.log['train_class_loss'][c] = []
-            self.log['train_class_acc'][c] = []
-            self.log['val_class_loss'][c] = []
-            self.log['val_class_acc'][c] = []
-
-    def reset_splits(self):
-        """Resets dataset splits."""
+    def resplit(self):
+        """Regenerates dataset splits."""
+        # TODO: implement balanced splitting
         self.train_split, self.val_split = random_split(self.dataset, [0.8, 0.2])
 
-    def train(self, optimizer, criterion, epochs=1, batch_size=1, leave=False):
+    def train(self, model, optimizer, criterion, epochs=1, batch_size=1, leave=False):
         """Training loop using the provided optimizer, criterion, and training
         parameters.
         """
         train_loader = DataLoader(self.train_split, batch_size=batch_size, shuffle=True)
-        self.model.train()
+        model = model.to(self.device)
+        model.train()
         for epoch in tqdm(range(1, epochs+1), leave=leave):
             for X, y in train_loader:
                 X, y = X.to(self.device), y.to(self.device)
                 if self.transform is not None:
                     X = self.transform(X)
                 optimizer.zero_grad()
-                logits = self.model(X)
+                logits = model(X)
                 loss = criterion(logits, y)
                 loss.backward()
                 optimizer.step()
-            train_loss, train_acc, tc_loss, tc_acc = self.eval(self.train_split, criterion)
-            val_loss, val_acc, vc_loss, vc_acc = self.eval(self.val_split, criterion)
+            train_loss, train_acc, train_closs, train_clacc = self.eval(model, self.train_split, criterion)
+            val_loss, val_acc, val_closs, val_clacc = self.eval(model, self.val_split, criterion)
 
-            # TODO: modularize logging step?
-            self.log['epochs'].append(epoch)
-            self.log['train_loss'].append(train_loss)
-            self.log['train_acc'].append(train_acc)
-            self.log['val_loss'].append(val_loss)
-            self.log['val_acc'].append(val_acc)
-            for c in tc_loss.keys():
-                self.log['train_class_loss'][c].append(tc_loss[c])
-                self.log['train_class_acc'][c].append(tc_acc[c])
-                self.log['val_class_loss'][c].append(vc_loss[c])
-                self.log['val_class_acc'][c].append(vc_acc[c])
-        utils.map_nested_dicts(np.array, self.log)
-        return self.log
+            self.logger.log('epochs', v=epoch)
+            self.logger.log('train_loss', v=train_loss)
+            self.logger.log('train_acc', v=train_acc)
+            self.logger.log('val_loss', v=val_loss)
+            self.logger.log('val_acc', v=val_acc)
+            for c in train_closs.keys():
+                self.logger.log('train_class_loss', c, v=train_closs[c])
+                self.logger.log('train_class_acc', c, v=train_clacc[c])
+                self.logger.log('val_class_loss', c, v=val_closs[c])
+                self.logger.log('val_class_acc', c, v=val_clacc[c])
+        test_loss, test_acc, test_closs, test_clacc = self.eval(model, self.test_dataset, criterion)
+        self.logger.log('test_loss', v=test_loss)
+        self.logger.log('test_acc', v=test_acc)
+        for c in test_closs.keys():
+            self.logger.log('test_class_loss', c, v=test_closs[c])
+            self.logger.log('test_class_acc', c, v=test_clacc[c])
+        return self.logger, model
 
-    def eval(self, dataset, criterion):
+    def eval(self, model, dataset, criterion):
         """Evaluation loop using the provided criterion.
         """
         loader = DataLoader(dataset, batch_size=len(dataset))
-        self.model.eval()
-        with torch.no_grad():
+        model = model.to(self.device)
+        model.eval()
+        with torch.inference_mode():
             for X, y in loader:
                 X, y = X.to(self.device), y.to(self.device)
-                logits = self.model(X)
+                logits = model(X)
                 loss = criterion(logits, y)
                 y_hat = torch.argmax(logits, dim=1)
                 y_ = (y_hat == y)

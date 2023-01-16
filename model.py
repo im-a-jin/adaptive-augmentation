@@ -16,6 +16,7 @@ class NonlinearNN(nn.Module):
     Notes:
         out_dim=10 for the optdigits dataset
     """
+    # TODO: Add model initialization and reset
     def __init__(self, in_dim=64, hidden_dim=32, out_dim=10):
         super(NonlinearNN, self).__init__()
 
