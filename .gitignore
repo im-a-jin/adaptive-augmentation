@@ -2,3 +2,5 @@ notebooks/
 checkpoints/
 .ipynb_checkpoints/
 *.ipynb
+mnist-rot-back-image/
+mnist-back-image/

@@ -38,3 +38,15 @@ class OptDigits(Dataset):
 
     def classlist(self):
         return self.classes.tolist()
+
+class MNIST(Dataset):
+    def __init__(self, filepath):
+        amat = np.loadtxt(filepath)
+        self.data = torch.FloatTensor(amat[:, :-1])
+        self.classes = torch.LongTensor(amat[:, -1])
+
+    def __len__(self):
+        return len(self.classes)
+
+    def __getitem__(self, index):
+        return self.data[index], self.classes[index]

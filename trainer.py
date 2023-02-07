@@ -42,6 +42,7 @@ class Trainer():
         """Training loop using the provided optimizer, criterion, and training
         parameters.
         """
+        self.reset_logger()
         train_loader = DataLoader(self.train_split, batch_size=batch_size, shuffle=True)
         model = model.to(self.device)
         model.train()
@@ -49,7 +50,7 @@ class Trainer():
             for X, y in train_loader:
                 X, y = X.to(self.device), y.to(self.device)
                 if self.transform is not None:
-                    X = self.transform(X)
+                    X = self.transform(X, y=y)
                 optimizer.zero_grad()
                 logits = model(X)
                 loss = criterion(logits, y)
