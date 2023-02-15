@@ -4,3 +4,4 @@ checkpoints/
 *.ipynb
 mnist-rot-back-image/
 mnist-back-image/
+mnist-back-rand/

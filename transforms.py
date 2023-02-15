@@ -64,13 +64,13 @@ class Clamp:
         return torch.clamp(x, min=self.lower, max=self.upper)
 
 
-class Normalize:
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
+class MinMaxNormalization:
+    def __init__(self, lo, hi):
+        self.lo = lo
+        self.hi = hi
 
     def __call__(self, x, **kwargs):
-        return torch.div(x - self.mean, self.std)
+        return torch.div(x - self.lo, self.hi - self.lo)
 
 
 class ClassTransform:

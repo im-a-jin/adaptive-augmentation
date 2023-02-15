@@ -1,7 +1,7 @@
 import os
 import sys
 import pickle
-from dataset import OptDigits
+from dataset import *
 from model import NonlinearNN
 from trainer import Trainer
 from transforms import *
@@ -14,30 +14,22 @@ import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
 
-# datapath = "/Users/matthewjin/imajin/correlated-noise/optdigits/"
-# trainpath = os.path.join(datapath, "opdigits.tra")
-# trainpath = os.path.join(datapath, "opdigits.tes")
-
-datapath = "/Users/matthewjin/imajin/correlated-noise/mnist-rot-back-image/"
-trainpath = os.path.join(datapath, "train.amat")
-testpath = os.path.join(datapath, "test.amat")
-
 savepath = "/Users/matthewjin/imajin/correlated-noise/checkpoints"
 
-def run(logname, logdir, transform=None, epochs=100):
+def run(train_dataset, test_dataset, logname, logdir, in_dim=64,
+              hidden_dim=32, transform=None, runs=10, epochs=100):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    train_dataset = OptDigits(train_path)
-    test_dataset = OptDigits(test_path)
 
-    trainer = Trainer(train_dataset, test_dataset, transform=transform, device=device)
+    trainer = Trainer(train_dataset, test_dataset, transform=transform,
+                      device=device)
     logs, models = [], []
     criterion = nn.CrossEntropyLoss()
-    for i in range(epochs):
-        model = NonlinearNN()
+    for i in range(runs):
+        model = NonlinearNN(in_dim=in_dim, hidden_dim=hidden_dim)
         optimizer = optim.SGD(model.parameters(), lr=0.01)
         trainer.resplit()
-        log, model = trainer.train(model, optimizer, criterion, epochs=epochs, batch_size=32)
+        log, model = trainer.train(model, optimizer, criterion, epochs=epochs,
+                                   batch_size=32)
         logs.append(log)
         models.append(model)
 
@@ -45,29 +37,63 @@ def run(logname, logdir, transform=None, epochs=100):
     with open(os.path.join(savepath, logdir, logname + ".pkl"), 'wb') as f:
         pickle.dump(col, f)
 
+def run_optdigits(logname, logdir, params, runs=100, epochs=100):
+    datapath = "/Users/matthewjin/imajin/correlated-noise/optdigits/"
+    trainpath = os.path.join(datapath, "optdigits.tra")
+    testpath = os.path.join(datapath, "optdigits.tes")
+    train_dataset = OptDigits(trainpath)
+    test_dataset = OptDigits(testpath)
+
+    class_num, err = 8, 1e-6
+    cov = train_dataset.data[train_dataset.classes==class_num].T.cov()
+    eig, vec = torch.linalg.eig(cov)
+    eig[eig==0] += err
+    cov = vec.real @ torch.diag(eig.real) @ vec.T.real
+
+    for i in range(len(params)):
+        print(f"Run {i}: p={params[i]}")
+        # transform = MultivariateNormalNoise(torch.zeros(64), params[i]*cov)
+        run(train_dataset, test_dataset, logname=f"{logname}_{params[i]}",
+            logdir=logdir, transform=transform, runs=runs, epochs=epochs)
+
+
+def run_mnist(logname, logdir, params, runs=10, epochs=250):
+    datapath = "/Users/matthewjin/imajin/correlated-noise/mnist-back-image/"
+    trainpath = os.path.join(datapath, "train.amat")
+    testpath = os.path.join(datapath, "test.amat")
+    train_dataset = MNIST(trainpath)
+    test_dataset = MNIST(testpath)
+    for i in range(len(params)):
+        print(f"Run {i}: p={params[i]}")
+        transform = None
+        run(train_dataset, test_dataset, logname=f"{logname}_{params[i]}",
+            logdir=logdir, transform=transform, runs=runs, epochs=epochs)
+
+
 def main():
-    """Noise Variance"""
-    # params = [0.2, 0.4, 0.6, 0.8, 1.0, 1.3]
-    # params = [1.6, 2.0, 2.5, 3.0, 4.0, 6.0]
+    params = [0]
     """Probabilities"""
     # params = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    """Class-based transform"""
-    params = [0.01, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
-    for i in range(len(params)):
-        print(f"Run {i}")
-        """Define augmentations"""
-        # transform = None
-        # transform = MultivariateNormalNoise(torch.zeros(64), params[i]*torch.eye(64))
-        # transform = Mask(p=params[i])
-        # transform = SparseNoise(m=1, p=params[i])
-        # transform = SaltAndPepper(p=params[i])
-        transform = ClassTransform(
-                {9: MultivariateNormalNoise(torch.zeros(64),
-                                            params[i]*torch.eye(64)),
-                })
-        """"""
-        run(f"gaussian9_{params[i]}", "gaussian_9", transform=transform,
-            epochs=100)
+    """Variances"""
+    # params = [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
+    params = [0.01, 0.05, 1.00, 1.20, 1.40, 1.60, 1.80, 2.00]
+
+    run_optdigits(logname=f"8noise", logdir=f"corrnoise", params=params, runs=25)
+
+    ## Example augmentations
+    """
+    # transform = None
+    # transform = MultivariateNormalNoise(torch.zeros(64), params[i]*torch.eye(64))
+    # transform = MultivariateNormalNoise(torch.zeros(784),
+    #                                     params[i]*torch.eye(784))
+    # transform = Mask(p=params[i])
+    # transform = SparseNoise(m=1, p=params[i])
+    # transform = SaltAndPepper(p=params[i])
+    # transform = ClassTransform(
+    #         {9: MultivariateNormalNoise(torch.zeros(64),
+    #                                     params[i]*torch.eye(64)),
+    #         })
+    """
 
 if __name__ == "__main__":
     main()
