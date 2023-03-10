@@ -23,10 +23,13 @@ def run(train_dataset, test_dataset, logname, logdir, in_dim=64,
     trainer = Trainer(train_dataset, test_dataset, transform=transform,
                       device=device)
     logs, models = [], []
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.MSELoss(reduction='sum') # nn.CrossEntropyLoss() 
     for i in range(runs):
-        model = NonlinearNN(in_dim=in_dim, hidden_dim=hidden_dim)
-        optimizer = optim.SGD(model.parameters(), lr=0.01)
+        # model = NonlinearNN(in_dim=in_dim, hidden_dim=hidden_dim)
+        # model.linear1.requires_grad_(False)
+        model = nn.Linear(64, 10)
+        """lr=0.001 for nonlinear, 0.0001 for linear"""
+        optimizer = optim.SGD(model.parameters(), lr=0.0001)
         trainer.resplit()
         log, model = trainer.train(model, optimizer, criterion, epochs=epochs,
                                    batch_size=32)
@@ -52,10 +55,11 @@ def run_optdigits(logname, logdir, params, runs=100, epochs=100):
 
     for i in range(len(params)):
         print(f"Run {i}: p={params[i]}")
+        transform = None
         # transform = MultivariateNormalNoise(torch.zeros(64), params[i]*cov)
         run(train_dataset, test_dataset, logname=f"{logname}_{params[i]}",
-            logdir=logdir, transform=transform, runs=runs, epochs=epochs)
-
+            logdir=logdir, transform=transform, runs=runs, epochs=epochs,)
+            # hidden_dim=params[i])
 
 def run_mnist(logname, logdir, params, runs=10, epochs=250):
     datapath = "/Users/matthewjin/imajin/correlated-noise/mnist-back-image/"
@@ -76,9 +80,14 @@ def main():
     # params = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     """Variances"""
     # params = [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
-    params = [0.01, 0.05, 1.00, 1.20, 1.40, 1.60, 1.80, 2.00]
+    # params = [0.01, 0.05, 1.00, 1.20, 1.40, 1.60, 1.80, 2.00]
+    """Hidden dims"""
+    # params = [4, 8, 12, 16, 20, 24, 28, 32, 36, 40]
+    # params = [44, 48, 52, 56, 60, 64]
+    # params = [5, 6, 7]
 
-    run_optdigits(logname=f"8noise", logdir=f"corrnoise", params=params, runs=25)
+    run_optdigits(logname=f"opt_base_linear_ce", logdir=f".", params=params,
+                  epochs=250, runs=25)
 
     ## Example augmentations
     """

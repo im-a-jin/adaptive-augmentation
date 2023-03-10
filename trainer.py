@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim import SGD
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
@@ -53,7 +55,12 @@ class Trainer():
                     X = self.transform(X, y=y)
                 optimizer.zero_grad()
                 logits = model(X)
-                loss = criterion(logits, y)
+                if isinstance(criterion, nn.CrossEntropyLoss):
+                    loss = criterion(logits, y)
+                else:
+                    y_ = F.one_hot(y, num_classes=10).float()
+                    loss = criterion(logits, y_)
+                    loss /= batch_size
                 loss.backward()
                 optimizer.step()
             train_loss, train_acc, train_closs, train_clacc = self.eval(model, self.train_split, criterion)
@@ -87,15 +94,25 @@ class Trainer():
             for X, y in loader:
                 X, y = X.to(self.device), y.to(self.device)
                 logits = model(X)
-                loss = criterion(logits, y)
+                if isinstance(criterion, nn.CrossEntropyLoss):
+                    loss = criterion(logits, y)
+                else:
+                    y_ = F.one_hot(y, num_classes=10).float()
+                    loss = criterion(logits, y_)
+                    loss /= len(dataset)
                 y_hat = torch.argmax(logits, dim=1)
-                y_ = (y_hat == y)
-                acc = torch.sum(y_) / len(y)
+                acc = torch.sum(y_hat==y) / len(y)
                 # Class-specific logging
                 class_loss, class_acc = {}, {}
                 for c in torch.unique(y):
                     c = c.item()
                     cargs = torch.argwhere(y == c).squeeze() # Squeeze shape [c, 1] to [c] for indexing
-                    class_loss[c] = criterion(logits[cargs, :], y[cargs])
+                    if isinstance(criterion, nn.CrossEntropyLoss):
+                        cl = criterion(logits[cargs, :], y[cargs])
+                    else:
+                        class_y_ = F.one_hot(y[cargs], num_classes=10).float()
+                        cl = criterion(logits[cargs, :], class_y_)
+                        cl /= len(cargs)
+                    class_loss[c] = cl
                     class_acc[c] = torch.sum(y_hat[cargs] == y[cargs]) / len(y[cargs])
         return loss, acc, class_loss, class_acc
