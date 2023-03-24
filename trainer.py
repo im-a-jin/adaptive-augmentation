@@ -37,8 +37,8 @@ class Trainer():
 
     def resplit(self):
         """Regenerates dataset splits."""
-        # TODO: implement balanced splitting
         self.train_split, self.val_split = random_split(self.dataset, [0.8, 0.2])
+        self.train_split, self.val_split = self.dataset, self.test_dataset
 
     def train(self, model, optimizer, criterion, epochs=1, batch_size=1, leave=False):
         """Training loop using the provided optimizer, criterion, and training
@@ -54,12 +54,13 @@ class Trainer():
                 if self.transform is not None:
                     X = self.transform(X, y=y)
                 optimizer.zero_grad()
-                logits = model(X)
+                base_logits = model(X, y, aug=False)
+                aug_logits = model(X, y, aug=True)
                 if isinstance(criterion, nn.CrossEntropyLoss):
-                    loss = criterion(logits, y)
+                    loss = criterion(base_logits, y) + criterion(aug_logits, y)
                 else:
                     y_ = F.one_hot(y, num_classes=10).float()
-                    loss = criterion(logits, y_)
+                    loss = criterion(base_logits, y_) + criterion(aug_logits, y_)
                     loss /= batch_size
                 loss.backward()
                 optimizer.step()
@@ -93,14 +94,15 @@ class Trainer():
         with torch.inference_mode():
             for X, y in loader:
                 X, y = X.to(self.device), y.to(self.device)
-                logits = model(X)
+                base_logits = model(X, y, aug=False)
+                aug_logits = model(X, y, aug=True)
                 if isinstance(criterion, nn.CrossEntropyLoss):
-                    loss = criterion(logits, y)
+                    loss = criterion(base_logits, y) + criterion(aug_logits, y)
                 else:
                     y_ = F.one_hot(y, num_classes=10).float()
-                    loss = criterion(logits, y_)
+                    loss = criterion(base_logits, y_) + criterion(aug_logits, y_)
                     loss /= len(dataset)
-                y_hat = torch.argmax(logits, dim=1)
+                y_hat = torch.argmax(base_logits, dim=1)
                 acc = torch.sum(y_hat==y) / len(y)
                 # Class-specific logging
                 class_loss, class_acc = {}, {}
@@ -108,10 +110,10 @@ class Trainer():
                     c = c.item()
                     cargs = torch.argwhere(y == c).squeeze() # Squeeze shape [c, 1] to [c] for indexing
                     if isinstance(criterion, nn.CrossEntropyLoss):
-                        cl = criterion(logits[cargs, :], y[cargs])
+                        cl = criterion(base_logits[cargs, :], y[cargs]) + criterion(aug_logits[cargs, :], y[cargs])
                     else:
                         class_y_ = F.one_hot(y[cargs], num_classes=10).float()
-                        cl = criterion(logits[cargs, :], class_y_)
+                        cl = criterion(base_logits[cargs, :], class_y_) + criterion(aug_logits[cargs, :], class_y_)
                         cl /= len(cargs)
                     class_loss[c] = cl
                     class_acc[c] = torch.sum(y_hat[cargs] == y[cargs]) / len(y[cargs])
